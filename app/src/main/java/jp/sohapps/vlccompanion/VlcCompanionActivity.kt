@@ -10,10 +10,12 @@ import androidx.activity.compose.setContent
 import jp.sohapps.sohplayerkit.companion.contract.CompanionPlaybackContract
 import jp.sohapps.sohplayerkit.companion.contract.CompanionPlaybackRequest
 import jp.sohapps.sohplayerkit.companion.contract.CompanionPlaybackResult
+import jp.sohapps.sohplayerkit.companion.contract.CompanionPlaybackResultAction
 
 class VlcCompanionActivity : ComponentActivity() {
     private val playbackController = VlcPlaybackController()
     private var playbackRequest: CompanionPlaybackRequest? = null
+    private var playbackResultAction = CompanionPlaybackResultAction.RETURN_TO_LIST
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,7 +60,8 @@ class VlcCompanionActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private fun finishWithPlaybackResult() {
+    private fun finishWithPlaybackResult(action: CompanionPlaybackResultAction) {
+        playbackResultAction = action
         updateActivityResult()
         finish()
     }
@@ -67,7 +70,8 @@ class VlcCompanionActivity : ComponentActivity() {
         val request = playbackRequest ?: return
         val result = CompanionPlaybackResult(
             positionMs = playbackController.currentResultPositionMs(),
-            durationMs = playbackController.currentDurationMs() ?: request.durationMs
+            durationMs = playbackController.currentDurationMs() ?: request.durationMs,
+            action = playbackResultAction
         )
         setResult(
             Activity.RESULT_OK,

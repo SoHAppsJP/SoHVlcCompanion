@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import jp.sohapps.sohplayerkit.companion.contract.CompanionPlaybackRequest
+import jp.sohapps.sohplayerkit.companion.contract.CompanionPlaybackResultAction
 import jp.sohapps.sohplayerkit.core.model.PlaybackEndAction
 import jp.sohapps.sohplayerkit.core.model.PlaybackVideoInfo
 import jp.sohapps.sohplayerkit.ui.controls.PlayerPanelActionButton
@@ -48,7 +49,7 @@ import kotlinx.coroutines.delay
 internal fun VlcCompanionPlayerScreen(
     request: CompanionPlaybackRequest,
     controller: VlcPlaybackController,
-    onFinish: () -> Unit,
+    onFinish: (CompanionPlaybackResultAction) -> Unit,
     onRotationLockChanged: (Boolean) -> Unit
 ) {
     MaterialTheme(colorScheme = darkColorScheme()) {
@@ -65,7 +66,7 @@ internal fun VlcCompanionPlayerScreen(
 private fun VlcCompanionPlayerContent(
     request: CompanionPlaybackRequest,
     controller: VlcPlaybackController,
-    onFinish: () -> Unit,
+    onFinish: (CompanionPlaybackResultAction) -> Unit,
     onRotationLockChanged: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
@@ -149,7 +150,7 @@ private fun VlcCompanionPlayerContent(
     )
 
     BackHandler(enabled = !uiState.controlsState.visible) {
-        onFinish()
+        onFinish(CompanionPlaybackResultAction.RETURN_TO_LIST)
     }
 
     LaunchedEffect(displayState.rotationLocked) {
@@ -190,8 +191,14 @@ private fun VlcCompanionPlayerContent(
                         activity?.runOnUiThread {
                             when (uiState.playbackSettingsState.playbackEndAction) {
                                 PlaybackEndAction.REPEAT -> controller.restartFromStart()
-                                PlaybackEndAction.STOP,
-                                PlaybackEndAction.NEXT -> onFinish()
+                                PlaybackEndAction.STOP -> {
+                                    onFinish(CompanionPlaybackResultAction.RETURN_TO_LIST)
+                                }
+                                PlaybackEndAction.NEXT -> {
+                                    if (request.canNavigateNext) {
+                                        onFinish(CompanionPlaybackResultAction.NEXT)
+                                    }
+                                }
                             }
                         }
                     }
@@ -322,14 +329,21 @@ private fun VlcCompanionPlayerContent(
                 onDoubleTapRight = { count ->
                     controller.seekDoubleTapForward(count, settings.getDoubleTapSeekForwardMs())
                 },
-                // Playlist navigation needs a companion-contract result command and is migrated next.
-                onPreviousClick = {},
+                onPreviousClick = {
+                    if (request.canNavigatePrevious) {
+                        onFinish(CompanionPlaybackResultAction.PREVIOUS)
+                    }
+                },
                 onSeekToStartClick = controller::seekToStart,
                 onSeekBackClick = { controller.seekBack(settings.getButtonSeekBackMs()) },
                 onPlayPauseClick = controller::togglePlayPause,
                 onSeekForwardClick = { controller.seekForward(settings.getButtonSeekForwardMs()) },
                 onSeekToEndClick = controller::seekToEnd,
-                onNextClick = {}
+                onNextClick = {
+                    if (request.canNavigateNext) {
+                        onFinish(CompanionPlaybackResultAction.NEXT)
+                    }
+                }
             ),
             controlsModifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -340,7 +354,9 @@ private fun VlcCompanionPlayerContent(
                     iconRes = R.drawable.ic_player_eject,
                     label = "Listへ",
                     modifier = Modifier.width(64.dp),
-                    onClick = onFinish
+                    onClick = {
+                        onFinish(CompanionPlaybackResultAction.RETURN_TO_LIST)
+                    }
                 )
                 PlayerPanelActionButton(
                     iconRes = R.drawable.ic_player_close,
