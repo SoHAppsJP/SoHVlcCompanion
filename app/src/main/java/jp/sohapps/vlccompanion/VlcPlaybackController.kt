@@ -478,7 +478,16 @@ internal class VlcPlaybackController {
                 }
             }
         })
-        applyAspectMode(player)
+        if (videoView.width > 0 && videoView.height > 0) {
+            updateVideoSurfaceSize(videoView.width, videoView.height)
+        } else if (videoSurfaceWidth > 0 && videoSurfaceHeight > 0) {
+            runCatching {
+                player.vlcVout.setWindowSize(videoSurfaceWidth, videoSurfaceHeight)
+            }
+            applyAspectMode(player)
+        } else {
+            applyAspectMode(player)
+        }
     }
 
     private fun applyAspectMode(player: MediaPlayer) {

@@ -1,6 +1,7 @@
 package jp.sohapps.vlccompanion
 
 import android.app.Activity
+import android.graphics.SurfaceTexture
 import android.view.TextureView
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -226,10 +227,45 @@ private fun VlcCompanionPlayerContent(
         AndroidView(
             factory = { viewContext ->
                 TextureView(viewContext).apply {
+                    val textureView = this
                     layoutParams = FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
+                    surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                        override fun onSurfaceTextureAvailable(
+                            surface: SurfaceTexture,
+                            width: Int,
+                            height: Int
+                        ) {
+                            if (width > 0 && height > 0) {
+                                controller.updateVideoSurfaceSize(width, height)
+                                videoView = textureView
+                            }
+                        }
+
+                        override fun onSurfaceTextureSizeChanged(
+                            surface: SurfaceTexture,
+                            width: Int,
+                            height: Int
+                        ) {
+                            if (width > 0 && height > 0) {
+                                controller.updateVideoSurfaceSize(width, height)
+                                if (videoView !== textureView) {
+                                    videoView = textureView
+                                }
+                            }
+                        }
+
+                        override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+                            if (videoView === textureView) {
+                                videoView = null
+                            }
+                            return true
+                        }
+
+                        override fun onSurfaceTextureUpdated(surface: SurfaceTexture) = Unit
+                    }
                     addOnLayoutChangeListener { view, left, top, right, bottom, _, _, _, _ ->
                         val width = right - left
                         val height = bottom - top
@@ -247,7 +283,6 @@ private fun VlcCompanionPlayerContent(
                         gamma = colorState.gamma,
                         temperature = colorState.temperature
                     )
-                    videoView = this
                 }
             },
             update = { view ->
@@ -259,11 +294,11 @@ private fun VlcCompanionPlayerContent(
                     gamma = colorState.gamma,
                     temperature = colorState.temperature
                 )
-                if (videoView !== view) {
-                    videoView = view
-                }
-                if (view.width > 0 && view.height > 0) {
+                if (view.isAvailable && view.width > 0 && view.height > 0) {
                     controller.updateVideoSurfaceSize(view.width, view.height)
+                    if (videoView !== view) {
+                        videoView = view
+                    }
                 }
             },
             modifier = Modifier
