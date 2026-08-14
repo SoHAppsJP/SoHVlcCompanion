@@ -3,6 +3,8 @@ package jp.sohapps.vlccompanion
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.TextureView
 import jp.sohapps.sohplayerkit.companion.contract.CompanionPlaybackRequest
 import jp.sohapps.sohplayerkit.core.model.PlayerAspectMode
@@ -15,6 +17,7 @@ import org.videolan.libvlc.MediaPlayer
 import org.videolan.libvlc.interfaces.IVLCVout
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 
 internal class VlcPlaybackController {
     interface Listener {
@@ -58,6 +61,9 @@ internal class VlcPlaybackController {
     private var pseudoFrameProcessedSteps = 0
     private var pseudoFrameTargetPositionMs = 0L
     private var pseudoFrameStepScheduled = false
+
+    var hasDvdNavigation: Boolean = false
+        private set
 
     private val pseudoFrameStepRunnable = object : Runnable {
         override fun run() {
@@ -106,6 +112,7 @@ internal class VlcPlaybackController {
         frameRate = request.videoFps?.takeIf { it.isFinite() && it > 0f } ?: 0.0f
         videoDisplayWidth = request.videoWidth?.takeIf { it > 0 } ?: 0
         videoDisplayHeight = request.videoHeight?.takeIf { it > 0 } ?: 0
+        hasDvdNavigation = false
 
         val newLibVlc = LibVLC(
             context.applicationContext,
@@ -295,6 +302,95 @@ internal class VlcPlaybackController {
         applyAspectMode(player)
     }
 
+    fun refreshDvdNavigationState() {
+        val player = mediaPlayer ?: return
+        val detected = runCatching {
+            val titleDescriptions = player.javaClass.methods.firstOrNull { method ->
+                method.name == "getTitleDescriptions" && method.parameterTypes.isEmpty()
+            }?.invoke(player)
+            val titleCount = when (titleDescriptions) {
+                is Array<*> -> titleDescriptions.size
+                is Collection<*> -> titleDescriptions.size
+                null -> 0
+                else -> 0
+            }
+            if (titleCount > 1) {
+                true
+            } else {
+                val chapterMethod = player.javaClass.methods.firstOrNull { method ->
+                    method.name == "getChapterDescriptions" && method.parameterTypes.size == 1
+                }
+                val maxTitlesToProbe = min(max(titleCount, 1), 8)
+                (0 until maxTitlesToProbe).any { index ->
+                    val chapters = chapterMethod?.invoke(player, index)
+                    when (chapters) {
+                        is Array<*> -> chapters.size > 1
+                        is Collection<*> -> chapters.size > 1
+                        else -> false
+                    }
+                }
+            }
+        }.getOrDefault(false)
+        if (detected) {
+            hasDvdNavigation = true
+        }
+    }
+
+    fun sendDiscHomeCommand(videoView: TextureView?): Boolean {
+        val byTitleZero = invokeMediaPlayerIntMethod("setTitle", 0)
+        val byPopup = sendDiscPopupMenuCommand(videoView)
+        return byTitleZero || byPopup
+    }
+
+    fun sendDiscMenuCommand(videoView: TextureView?): Boolean {
+        val byPopup = sendDiscPopupMenuCommand(videoView)
+        val byTitleZero = invokeMediaPlayerIntMethod("setTitle", 0)
+        return byPopup || byTitleZero
+    }
+
+    fun sendDiscBackCommand(videoView: TextureView?): Boolean {
+        val byViewBack = sendDiscKeyEventToView(videoView, KeyEvent.KEYCODE_BACK)
+        val byVoutBack = sendDiscKeyEventToVout(KeyEvent.KEYCODE_BACK)
+        if (byViewBack || byVoutBack) {
+            return true
+        }
+        return sendDiscPopupMenuCommand(videoView)
+    }
+
+    fun sendDvdNavigationTouch(event: MotionEvent): Boolean {
+        val player = mediaPlayer ?: return false
+        val vout = runCatching { player.vlcVout }.getOrNull() ?: return false
+        val action = when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> 0
+            MotionEvent.ACTION_UP -> 1
+            MotionEvent.ACTION_MOVE -> 2
+            else -> return false
+        }
+        val x = event.x.toInt()
+        val y = event.y.toInt()
+        val sent = runCatching {
+            val method = vout.javaClass.methods.firstOrNull { method ->
+                method.name == "sendMouseEvent" && method.parameterTypes.size == 4
+            } ?: return@runCatching false
+            method.invoke(vout, action, 0, x, y)
+            true
+        }.getOrDefault(false)
+        if (sent) {
+            return true
+        }
+
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            runCatching {
+                val navigate = player.javaClass.methods.firstOrNull { method ->
+                    method.name == "navigate" && method.parameterTypes.size == 1
+                } ?: return@runCatching false
+                navigate.invoke(player, VLC_NAVIGATE_ACTIVATE)
+                true
+            }.getOrDefault(false)
+        }
+        return true
+    }
+
     fun release() {
         handler.removeCallbacks(seekRetryRunnable)
         cancelPseudoFrameSequence()
@@ -316,6 +412,65 @@ internal class VlcPlaybackController {
         runCatching { lib?.release() }
         request = null
         hasRenderedVideo = false
+        hasDvdNavigation = false
+    }
+
+    private fun sendDiscNavigationCommand(command: Int): Boolean {
+        val player = mediaPlayer ?: return false
+        return runCatching {
+            player.navigate(command)
+            true
+        }.recoverCatching {
+            val method = player.javaClass.methods.firstOrNull { method ->
+                method.name == "navigate" && method.parameterTypes.size == 1
+            } ?: throw it
+            method.invoke(player, command)
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun sendDiscKeyEventToView(view: TextureView?, keyCode: Int): Boolean {
+        val target = view ?: return false
+        return runCatching {
+            target.requestFocus()
+            val handledDown = target.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+            val handledUp = target.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+            handledDown || handledUp
+        }.getOrDefault(false)
+    }
+
+    private fun sendDiscKeyEventToVout(keyCode: Int): Boolean {
+        val player = mediaPlayer ?: return false
+        val vout = runCatching { player.vlcVout }.getOrNull() ?: return false
+        return runCatching {
+            val method = vout.javaClass.methods.firstOrNull { method ->
+                method.name == "sendKeyEvent" && method.parameterTypes.size == 2
+            } ?: return@runCatching false
+            method.invoke(vout, KeyEvent.ACTION_DOWN, keyCode)
+            method.invoke(vout, KeyEvent.ACTION_UP, keyCode)
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun invokeMediaPlayerIntMethod(methodName: String, value: Int): Boolean {
+        val player = mediaPlayer ?: return false
+        return runCatching {
+            val method = player.javaClass.methods.firstOrNull { method ->
+                method.name == methodName &&
+                    method.parameterTypes.size == 1 &&
+                    (method.parameterTypes[0] == Int::class.javaPrimitiveType ||
+                        method.parameterTypes[0] == Integer.TYPE)
+            } ?: return false
+            method.invoke(player, value)
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun sendDiscPopupMenuCommand(videoView: TextureView?): Boolean {
+        val byNavigate = sendDiscNavigationCommand(VLC_NAVIGATE_POPUP_MENU)
+        val byViewMenu = sendDiscKeyEventToView(videoView, KeyEvent.KEYCODE_MENU)
+        val byVoutMenu = sendDiscKeyEventToVout(KeyEvent.KEYCODE_MENU)
+        return byNavigate || byViewMenu || byVoutMenu
     }
 
     private fun seekDoubleTapFromSequence(
@@ -420,6 +575,7 @@ internal class VlcPlaybackController {
                 MediaPlayer.Event.Playing -> {
                     runCatching { player.rate = playbackSpeed }
                     applyAspectMode(player)
+                    refreshDvdNavigationState()
                     if (!initialResumePreparing) {
                         listener?.onPlaybackStarted()
                     }
@@ -451,6 +607,8 @@ internal class VlcPlaybackController {
 
                 MediaPlayer.Event.Vout -> {
                     hasRenderedVideo = true
+                    applyAspectMode(player)
+                    refreshDvdNavigationState()
                 }
             }
         }
@@ -657,6 +815,8 @@ internal class VlcPlaybackController {
     }
 
     private companion object {
+        const val VLC_NAVIGATE_ACTIVATE = 0
+        const val VLC_NAVIGATE_POPUP_MENU = 5
         const val SEEK_RETRY_INTERVAL_MS = 250L
         const val SEEK_DEADLINE_MS = 15_000L
         const val MANUAL_SEEK_DEADLINE_MS = 4_000L
