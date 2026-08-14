@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SoHVlcCompanion"
+        android:usesCleartextTraffic="true">
+        <activity
+            android:name=".VlcCompanionActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="jp.sohapps.sohplayerkit.companion.action.PLAY" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
