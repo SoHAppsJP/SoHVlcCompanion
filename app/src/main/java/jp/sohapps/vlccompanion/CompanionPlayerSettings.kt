@@ -1,6 +1,7 @@
 package jp.sohapps.vlccompanion
 
 import android.content.Context
+import jp.sohapps.sohplayerkit.companion.contract.CompanionPlayerSettingsSnapshot
 import jp.sohapps.sohplayerkit.core.model.PlaybackEndAction
 import jp.sohapps.sohplayerkit.core.model.PlayerAspectMode
 import jp.sohapps.sohplayerkit.core.model.PlayerColorPreset
@@ -12,15 +13,20 @@ internal class CompanionPlayerSettings(context: Context) {
         Context.MODE_PRIVATE
     )
 
-    fun getButtonSeekBackMs(): Long = DEFAULT_BUTTON_SEEK_BACK_MS
+    fun getButtonSeekBackMs(): Long =
+        preferences.getLong(KEY_BUTTON_SEEK_BACK_MS, DEFAULT_BUTTON_SEEK_BACK_MS)
 
-    fun getButtonSeekForwardMs(): Long = DEFAULT_BUTTON_SEEK_FORWARD_MS
+    fun getButtonSeekForwardMs(): Long =
+        preferences.getLong(KEY_BUTTON_SEEK_FORWARD_MS, DEFAULT_BUTTON_SEEK_FORWARD_MS)
 
-    fun getDoubleTapSeekBackMs(): Long = DEFAULT_DOUBLE_TAP_SEEK_BACK_MS
+    fun getDoubleTapSeekBackMs(): Long =
+        preferences.getLong(KEY_DOUBLE_TAP_SEEK_BACK_MS, DEFAULT_DOUBLE_TAP_SEEK_BACK_MS)
 
-    fun getDoubleTapSeekForwardMs(): Long = DEFAULT_DOUBLE_TAP_SEEK_FORWARD_MS
+    fun getDoubleTapSeekForwardMs(): Long =
+        preferences.getLong(KEY_DOUBLE_TAP_SEEK_FORWARD_MS, DEFAULT_DOUBLE_TAP_SEEK_FORWARD_MS)
 
-    fun getControlsAutoHideMs(): Long = DEFAULT_CONTROLS_AUTO_HIDE_MS
+    fun getControlsAutoHideMs(): Long =
+        preferences.getLong(KEY_CONTROLS_AUTO_HIDE_MS, DEFAULT_CONTROLS_AUTO_HIDE_MS)
 
     fun getPlaybackSpeed(): Float = preferences.getFloat(KEY_PLAYBACK_SPEED, DEFAULT_PLAYBACK_SPEED)
 
@@ -125,6 +131,55 @@ internal class CompanionPlayerSettings(context: Context) {
         preferences.edit().putFloat(KEY_COLOR_TEMPERATURE, value).apply()
     }
 
+    fun applySnapshot(snapshot: CompanionPlayerSettingsSnapshot) {
+        preferences.edit()
+            .putLong(KEY_BUTTON_SEEK_BACK_MS, snapshot.buttonSeekBackMs)
+            .putLong(KEY_BUTTON_SEEK_FORWARD_MS, snapshot.buttonSeekForwardMs)
+            .putLong(KEY_DOUBLE_TAP_SEEK_BACK_MS, snapshot.doubleTapSeekBackMs)
+            .putLong(KEY_DOUBLE_TAP_SEEK_FORWARD_MS, snapshot.doubleTapSeekForwardMs)
+            .putLong(KEY_CONTROLS_AUTO_HIDE_MS, snapshot.controlsAutoHideMs)
+            .putFloat(KEY_PLAYBACK_SPEED, snapshot.playbackSpeed)
+            .putFloat(KEY_CUSTOM_ASPECT_WIDTH, snapshot.customAspectWidth)
+            .putFloat(KEY_CUSTOM_ASPECT_HEIGHT, snapshot.customAspectHeight)
+            .putBoolean(KEY_ROTATION_LOCKED, snapshot.rotationLocked)
+            .putBoolean(KEY_AVOID_CUTOUT, snapshot.avoidCutout)
+            .apply()
+
+        enumValueOrNull<PlaybackEndAction>(snapshot.playbackEndAction)?.let(::setPlaybackEndAction)
+        enumValueOrNull<PlayerAspectMode>(snapshot.aspectMode)?.let(::setAspectMode)
+        enumValueOrNull<PlayerColorPreset>(snapshot.colorPreset)?.let(::setColorPreset)
+
+        setColorBrightness(snapshot.colorBrightness)
+        setColorContrast(snapshot.colorContrast)
+        setColorSaturation(snapshot.colorSaturation)
+        setColorGamma(snapshot.colorGamma)
+        setColorTemperature(snapshot.colorTemperature)
+    }
+
+    fun toSnapshot(): CompanionPlayerSettingsSnapshot {
+        val colorValues = getColorValues()
+        return CompanionPlayerSettingsSnapshot(
+            buttonSeekBackMs = getButtonSeekBackMs(),
+            buttonSeekForwardMs = getButtonSeekForwardMs(),
+            doubleTapSeekBackMs = getDoubleTapSeekBackMs(),
+            doubleTapSeekForwardMs = getDoubleTapSeekForwardMs(),
+            controlsAutoHideMs = getControlsAutoHideMs(),
+            playbackSpeed = getPlaybackSpeed(),
+            playbackEndAction = getPlaybackEndAction().name,
+            aspectMode = getAspectMode().name,
+            customAspectWidth = getCustomAspectWidth(),
+            customAspectHeight = getCustomAspectHeight(),
+            rotationLocked = isRotationLocked(),
+            avoidCutout = isAvoidCutoutEnabled(),
+            colorPreset = getColorPreset().name,
+            colorBrightness = colorValues.brightness,
+            colorContrast = colorValues.contrast,
+            colorSaturation = colorValues.saturation,
+            colorGamma = colorValues.gamma,
+            colorTemperature = colorValues.temperature
+        )
+    }
+
     private fun colorPresetValues(preset: PlayerColorPreset): PlayerColorValues {
         return when (preset) {
             PlayerColorPreset.NORMAL -> PlayerColorValues(0.0f, 1.0f, 1.0f, 1.0f, 0.0f)
@@ -141,14 +196,23 @@ internal class CompanionPlayerSettings(context: Context) {
         value: String?,
         defaultValue: T
     ): T {
+        return enumValueOrNull<T>(value) ?: defaultValue
+    }
+
+    private inline fun <reified T : Enum<T>> enumValueOrNull(value: String?): T? {
         return value?.let { stored ->
             enumValues<T>().firstOrNull { it.name == stored }
-        } ?: defaultValue
+        }
     }
 
     private companion object {
         const val PREFERENCES_NAME = "vlc_companion_player_settings"
 
+        const val KEY_BUTTON_SEEK_BACK_MS = "button_seek_back_ms"
+        const val KEY_BUTTON_SEEK_FORWARD_MS = "button_seek_forward_ms"
+        const val KEY_DOUBLE_TAP_SEEK_BACK_MS = "double_tap_seek_back_ms"
+        const val KEY_DOUBLE_TAP_SEEK_FORWARD_MS = "double_tap_seek_forward_ms"
+        const val KEY_CONTROLS_AUTO_HIDE_MS = "controls_auto_hide_ms"
         const val KEY_PLAYBACK_SPEED = "playback_speed"
         const val KEY_PLAYBACK_END_ACTION = "playback_end_action"
         const val KEY_ASPECT_MODE = "aspect_mode"

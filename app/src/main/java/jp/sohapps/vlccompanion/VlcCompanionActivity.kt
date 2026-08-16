@@ -15,6 +15,7 @@ import jp.sohapps.sohplayerkit.companion.contract.CompanionPlaybackResultAction
 class VlcCompanionActivity : ComponentActivity() {
     private val playbackController = VlcPlaybackController()
     private var playbackRequest: CompanionPlaybackRequest? = null
+    private var playerSettings: CompanionPlayerSettings? = null
     private var playbackResultAction = CompanionPlaybackResultAction.RETURN_TO_LIST
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -27,6 +28,9 @@ class VlcCompanionActivity : ComponentActivity() {
             return
         }
         playbackRequest = request
+        playerSettings = CompanionPlayerSettings(this).also { settings ->
+            request.playerSettings?.let(settings::applySnapshot)
+        }
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
@@ -71,7 +75,8 @@ class VlcCompanionActivity : ComponentActivity() {
         val result = CompanionPlaybackResult(
             positionMs = playbackController.currentResultPositionMs(),
             durationMs = playbackController.currentDurationMs() ?: request.durationMs,
-            action = playbackResultAction
+            action = playbackResultAction,
+            playerSettings = playerSettings?.toSnapshot() ?: request.playerSettings
         )
         setResult(
             Activity.RESULT_OK,
