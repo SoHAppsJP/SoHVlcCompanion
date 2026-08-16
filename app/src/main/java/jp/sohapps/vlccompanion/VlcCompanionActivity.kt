@@ -2,6 +2,7 @@ package jp.sohapps.vlccompanion
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
@@ -33,7 +34,7 @@ class VlcCompanionActivity : ComponentActivity() {
         }
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        hideSystemBars()
+        updateSystemBarsForOrientation(resources.configuration)
 
         setContent {
             VlcCompanionPlayerScreen(
@@ -49,8 +50,13 @@ class VlcCompanionActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
-            hideSystemBars()
+            updateSystemBarsForOrientation(resources.configuration)
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateSystemBarsForOrientation(newConfig)
     }
 
     override fun onPause() {
@@ -92,6 +98,14 @@ class VlcCompanionActivity : ComponentActivity() {
         }
     }
 
+    private fun updateSystemBarsForOrientation(configuration: Configuration) {
+        if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            hideSystemBars()
+        } else {
+            showSystemBars()
+        }
+    }
+
     @Suppress("DEPRECATION")
     private fun hideSystemBars() {
         window.decorView.systemUiVisibility =
@@ -101,5 +115,10 @@ class VlcCompanionActivity : ComponentActivity() {
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+    }
+
+    @Suppress("DEPRECATION")
+    private fun showSystemBars() {
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
     }
 }
