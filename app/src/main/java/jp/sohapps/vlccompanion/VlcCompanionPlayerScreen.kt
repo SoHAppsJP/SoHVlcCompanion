@@ -212,9 +212,7 @@ private fun VlcCompanionPlayerContent(
                         activity?.runOnUiThread {
                             when (uiState.playbackSettingsState.playbackEndAction) {
                                 PlaybackEndAction.REPEAT -> controller.restartFromStart()
-                                PlaybackEndAction.STOP -> {
-                                    onFinish(CompanionPlaybackResultAction.RETURN_TO_LIST)
-                                }
+                                PlaybackEndAction.STOP -> Unit
                                 PlaybackEndAction.NEXT -> {
                                     if (request.canNavigateNext) {
                                         onFinish(CompanionPlaybackResultAction.NEXT)

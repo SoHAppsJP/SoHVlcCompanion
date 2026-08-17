@@ -53,6 +53,8 @@ internal class VlcPlaybackController {
     private var videoDisplayWidth = 0
     private var videoDisplayHeight = 0
     private var frameRate = 0.0f
+    private var heldEndPositionMs: Long? = null
+    private var lastKnownPositionMs = 0L
 
     private var doubleTapSeekBasePositionMs = 0L
     private var doubleTapSeekSingleStepMs = PLAYER_PSEUDO_FRAME_STEP_MS
@@ -113,6 +115,8 @@ internal class VlcPlaybackController {
         videoDisplayWidth = request.videoWidth?.takeIf { it > 0 } ?: 0
         videoDisplayHeight = request.videoHeight?.takeIf { it > 0 } ?: 0
         hasDvdNavigation = false
+        heldEndPositionMs = null
+        lastKnownPositionMs = 0L
 
         val newLibVlc = LibVLC(
             context.applicationContext,
@@ -181,12 +185,18 @@ internal class VlcPlaybackController {
 
     fun currentResultPositionMs(): Long {
         return pendingSeekMs?.takeIf { it > 0L }
-            ?: runCatching { mediaPlayer?.time }.getOrNull()?.coerceAtLeast(0L)
-            ?: 0L
+            ?: heldEndPositionMs?.takeIf { it > 0L }
+            ?: readCurrentPositionMs()
     }
 
     fun currentPositionMs(): Long {
-        return runCatching { mediaPlayer?.time }.getOrNull()?.coerceAtLeast(0L) ?: 0L
+        return heldEndPositionMs ?: readCurrentPositionMs()
+    }
+
+    private fun readCurrentPositionMs(): Long {
+        val current = runCatching { mediaPlayer?.time }.getOrNull()?.coerceAtLeast(0L) ?: 0L
+        lastKnownPositionMs = current
+        return current
     }
 
     fun currentDurationMs(): Long? {
@@ -202,6 +212,8 @@ internal class VlcPlaybackController {
         val player = mediaPlayer ?: return
         if (player.isPlaying) {
             player.pause()
+        } else if (heldEndPositionMs != null) {
+            restartFromStart()
         } else {
             player.play()
         }
@@ -241,6 +253,8 @@ internal class VlcPlaybackController {
         }
 
         clearInitialResumeState()
+        heldEndPositionMs = null
+        lastKnownPositionMs = target
         pendingSeekMs = target
         pendingSeekDeadlineMs = System.currentTimeMillis() + MANUAL_SEEK_DEADLINE_MS
         issueSeek(player, target)
@@ -261,6 +275,8 @@ internal class VlcPlaybackController {
         cancelPseudoFrameSequence()
         clearPendingSeek()
         clearInitialResumeState()
+        heldEndPositionMs = null
+        lastKnownPositionMs = 0L
         runCatching { player.time = 0L }
         val length = runCatching { player.length }.getOrDefault(0L)
         if (length > 0L) {
@@ -413,6 +429,8 @@ internal class VlcPlaybackController {
         request = null
         hasRenderedVideo = false
         hasDvdNavigation = false
+        heldEndPositionMs = null
+        lastKnownPositionMs = 0L
     }
 
     private fun sendDiscNavigationCommand(command: Int): Boolean {
@@ -516,7 +534,7 @@ internal class VlcPlaybackController {
             pseudoFrameDirection = direction
             pseudoFrameRequestedSteps = 0
             pseudoFrameProcessedSteps = 0
-            pseudoFrameTargetPositionMs = runCatching { player.time }.getOrDefault(0L)
+            pseudoFrameTargetPositionMs = currentPositionMs()
             pseudoFrameStepScheduled = false
         }
 
@@ -549,7 +567,7 @@ internal class VlcPlaybackController {
 
     private fun seekRelative(deltaMs: Long) {
         val player = mediaPlayer ?: return
-        val current = runCatching { player.time }.getOrDefault(0L)
+        val current = currentPositionMs()
         val length = runCatching { player.length }.getOrDefault(0L)
         val unclamped = current + deltaMs
         val target = if (length > 0L) {
@@ -594,6 +612,17 @@ internal class VlcPlaybackController {
                 }
 
                 MediaPlayer.Event.EndReached -> {
+                    val length = runCatching { player.length }.getOrDefault(0L)
+                    val current = runCatching { player.time }.getOrDefault(0L)
+                    heldEndPositionMs = when {
+                        length > 0L -> length
+                        current > 0L -> current
+                        lastKnownPositionMs > 0L -> lastKnownPositionMs
+                        else -> null
+                    }
+                    heldEndPositionMs?.let { endPosition ->
+                        lastKnownPositionMs = endPosition
+                    }
                     clearPendingSeek()
                     clearInitialResumeState()
                     listener?.onPlaybackEnded()
