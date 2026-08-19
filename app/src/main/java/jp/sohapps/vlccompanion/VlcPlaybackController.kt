@@ -52,6 +52,7 @@ internal class VlcPlaybackController {
     private var videoSurfaceHeight = 0
     private var videoDisplayWidth = 0
     private var videoDisplayHeight = 0
+    private var videoPixelRatio: Float? = null
     private var frameRate = 0.0f
     private var heldEndPositionMs: Long? = null
     private var lastKnownPositionMs = 0L
@@ -114,6 +115,7 @@ internal class VlcPlaybackController {
         frameRate = request.videoFps?.takeIf { it.isFinite() && it > 0f } ?: 0.0f
         videoDisplayWidth = request.videoWidth?.takeIf { it > 0 } ?: 0
         videoDisplayHeight = request.videoHeight?.takeIf { it > 0 } ?: 0
+        videoPixelRatio = null
         hasDvdNavigation = false
         heldEndPositionMs = null
         lastKnownPositionMs = 0L
@@ -202,6 +204,18 @@ internal class VlcPlaybackController {
     fun currentDurationMs(): Long? {
         return runCatching { mediaPlayer?.length }.getOrNull()
             ?.takeIf { it > 0L }
+    }
+
+    fun currentVideoWidth(): Int = videoDisplayWidth
+
+    fun currentVideoHeight(): Int = videoDisplayHeight
+
+    fun currentVideoPixelRatio(): Float? {
+        return videoPixelRatio?.takeIf { it.isFinite() && it > 0.0f }
+    }
+
+    fun currentVideoFrameRate(): Float {
+        return frameRate.takeIf { it.isFinite() && it > 0.0f } ?: 0.0f
     }
 
     fun isPlaying(): Boolean {
@@ -429,6 +443,10 @@ internal class VlcPlaybackController {
         request = null
         hasRenderedVideo = false
         hasDvdNavigation = false
+        videoDisplayWidth = 0
+        videoDisplayHeight = 0
+        videoPixelRatio = null
+        frameRate = 0.0f
         heldEndPositionMs = null
         lastKnownPositionMs = 0L
     }
@@ -661,6 +679,9 @@ internal class VlcPlaybackController {
                 if (resolvedWidth > 0 && resolvedHeight > 0) {
                     videoDisplayWidth = resolvedWidth
                     videoDisplayHeight = resolvedHeight
+                    if (sarNum > 0 && sarDen > 0) {
+                        videoPixelRatio = sarNum.toFloat() / sarDen.toFloat()
+                    }
                     applyAspectMode(player)
                 }
             }

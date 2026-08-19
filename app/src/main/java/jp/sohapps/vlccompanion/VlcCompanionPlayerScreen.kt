@@ -119,7 +119,7 @@ private fun VlcCompanionPlayerContent(
             videoWidth = request.videoWidth ?: 0,
             videoHeight = request.videoHeight ?: 0,
             videoFrameRate = request.videoFps ?: 0.0f,
-            playbackVideoInfo = PlaybackVideoInfo()
+            playbackVideoInfo = PlaybackVideoInfo(fileName = request.displayName)
         ),
         bindings = PlayerUiStateBindings(
             seekAction = controller::seekTo,
@@ -159,6 +159,7 @@ private fun VlcCompanionPlayerContent(
     val playbackState = uiState.playbackState
     val displayState = uiState.displayState
     val colorState = uiState.colorState
+    val videoMetadata = uiState.videoMetadata
     val statusState = uiState.statusState
     val gestureFeedback = uiState.gestureFeedbackState
     val zoomState = uiState.zoomState
@@ -240,6 +241,14 @@ private fun VlcCompanionPlayerContent(
                 isPlaying = controller.isPlaying(),
                 currentPositionMs = controller.currentPositionMs(),
                 durationMs = controller.currentDurationMs() ?: request.durationMs ?: 0L
+            )
+            videoMetadata.mergeKnown(
+                width = controller.currentVideoWidth(),
+                height = controller.currentVideoHeight(),
+                rotationDegrees = null,
+                pixelRatio = controller.currentVideoPixelRatio(),
+                frameRate = controller.currentVideoFrameRate(),
+                playbackVideoInfo = videoMetadata.playbackVideoInfo
             )
             controller.refreshDvdNavigationState()
             if (controller.hasDvdNavigation && !dvdNavigationMode.value) {
